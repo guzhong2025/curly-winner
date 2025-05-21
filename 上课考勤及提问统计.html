@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>课堂管理系统 v2</title>
+    <style>
+        .container { padding: 20px; max-width: 800px; margin: 0 auto; }
+        .student-list { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+        .student-btn { 
+            padding: 15px; 
+            cursor: pointer; 
+            background: #4CAF50; 
+            color: white; 
+            border: none;
+            transition: all 0.3s;
+        }
+        .student-btn.signed { 
+            background: #808080; 
+            cursor: not-allowed;
+        }
+        .hidden { display: none; }
+        .section { margin: 20px 0; border: 1px solid #ddd; padding: 15px; }
+        .status-text { color: #666; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>课堂管理系统</h1>
+        
+        <!-- 文件上传区域 -->
+        <div class="section">
+            <h3>第一步：上传学生名单</h3>
+            <input type="file" id="fileInput" accept=".txt" class="hidden">
+            <button onclick="triggerFileInput()" id="uploadBtn">上传文件</button>
+            <span id="uploadStatus" class="status-text"></span>
+        </div>
+
+        <!-- 上课控制 -->
+        <div class="section hidden" id="classControl">
+            <h3>第二步：开始上课</h3>
+            <button onclick="startClass()" id="startClassBtn">开始上课</button>
+        </div>
+
+        <!-- 签到界面 -->
+        <div class="section hidden" id="attendancePanel">
+            <h3>学生签到（点击姓名签到）</h3>
+            <div id="studentContainer" class="student-list"></div>
+            <button onclick="finishSignIn()" class="hidden" id="finishBtn">完成签到</button>
+        </div>
+
+        <!-- 提问界面 -->
+        <div class="section hidden" id="questionPanel">
+            <h3>课堂提问</h3>
+            <button onclick="randomStudent()">随机提问</button>
+            <div id="selectedStudent" style="margin-top:10px;"></div>
+        </div>
+
+        <!-- 导出报告 -->
+        <div class="section">
+            <button onclick="exportReport()">导出课堂报告</button>
+        </div>
+    </div>
+
+<script>
+let classData = {
+    startTime: null,
+    students: [],
+    questions: []
+};
+
+// 触发文件选择
+function triggerFileInput() {
+    document.getElementById('fileInput').click();
+}
+
+// 文件上传处理
+document.getElementById('fileInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    document.getElementById('uploadStatus').textContent = `已选择文件：${file.name}`;
+    const reader = new FileReader();
+    
+    reader.onload = function() {
+        classData.students = this.result.split('\n').map(name => ({
+            name: name.trim(),
+            status: '未签到',
+            score: null
+        }));
+        // 显示开始上课按钮
+        document.getElementById('classControl').classList.remove('hidden');
+    };
+    
+    reader.readAsText(file);
+});
+
+function startClass() {
+    classData.startTime = new Date();
+    document.getElementById('classControl').classList.add('hidden');
+    document.getElementById('attendancePanel').classList.remove('hidden');
+    renderStudents();
+}
+
+function renderStudents() {
+    const container = document.getElementById('studentContainer');
+    container.innerHTML = classData.students.map((student, index) => `
+        <button class="student-btn ${student.status === '已签到' ? 'signed' : ''}" 
+                onclick="signIn(${index})" 
+                ${student.status === '已签到' ? 'disabled' : ''}>
+            ${student.name}<br>
+            <small>${student.status}</small>
+        </button>
+    `).join('');
+    
+    // 自动显示完成签到按钮
+    const signedCount = classData.students.filter(s => s.status === '已签到').length;
+    document.getElementById('finishBtn').classList.toggle('hidden', signedCount === 0);
+}
+
+function signIn(index) {
+    classData.students[index].status = '已签到';
+    renderStudents();
+}
+
+function finishSignIn() {
+    document.getElementById('attendancePanel').classList.add('hidden');
+    document.getElementById('questionPanel').classList.remove('hidden');
+}
+
+function randomStudent() {
+    const signedStudents = classData.students.filter(s => s.status === '已签到');
+    if (signedStudents.length === 0) return;
+    
+    const randomIndex = Math.floor(Math.random() * signedStudents.length);
+    const student = signedStudents[randomIndex];
+    
+    const score = prompt(`请为 ${student.name} 的发言评分（1-5分）:`);
+    if (score >= 1 && score <= 5) {
+        student.score = score;
+        classData.questions.push({
+            student: student.name,
+            score: score,
+            time: new Date().toLocaleTimeString()
+        });
+        renderStudents();
+    }
+}
+
+function exportReport() {
+    const htmlContent = `
+        <h1>课堂报告</h1>
+        <p>上课时间: ${classData.startTime.toLocaleString()}</p>
+        
+        <h2>考勤情况</h2>
+        <table border="1" style="width:100%; border-collapse: collapse;">
+            <tr><th>姓名</th><th>状态</th><th>评分</th></tr>
+            ${classData.students.map(s => `
+                <tr>
+                    <td>${s.name}</td>
+                    <td>${s.status}</td>
+                    <td>${s.score || '-'}</td>
+                </tr>
+            `).join('')}
+        </table>
+
+        ${classData.questions.length ? `
+        <h2>提问记录</h2>
+        <table border="1" style="width:100%; border-collapse: collapse;">
+            <tr><th>时间</th><th>学生</th><th>分数</th></tr>
+            ${classData.questions.map(q => `
+                <tr>
+                    <td>${q.time}</td>
+                    <td>${q.student}</td>
+                    <td>${q.score}</td>
+                </tr>
+            `).join('')}
+        </table>` : ''}
+    `;
+
+    const blob = new Blob([htmlContent], {type: 'application/msword'});
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `课堂报告_${new Date().toISOString().slice(0,10)}.doc`;
+    link.click();
+}
+</script>
+</body>
+</html>
